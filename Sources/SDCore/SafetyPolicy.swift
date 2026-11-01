@@ -33,7 +33,9 @@ public struct SafetyPolicy: Sendable {
     public static let `default` = SafetyPolicy()
 
     public func rejection(for disk: DiskInfo) -> DiskRejection? {
-        if disk.isInternal { return .internalDisk }
+        // Il lettore SD integrato del Mac si dichiara "Internal", ma e' removibile ed espellibile;
+        // gli SSD di sistema non lo sono mai. Un disco interno passa solo con entrambi i flag.
+        if disk.isInternal && !(disk.isRemovableMedia && disk.isEjectable) { return .internalDisk }
         if !disk.isPhysical { return .notPhysical }
         if disk.isSystemImage { return .systemImage }
         if disk.sizeBytes == 0 { return .zeroSize }

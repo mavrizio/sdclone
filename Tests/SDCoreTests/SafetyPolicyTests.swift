@@ -4,7 +4,7 @@ import XCTest
 final class SafetyPolicyTests: XCTestCase {
     private func infoPlist(id: String, size: Int, bus: String, internal isInternal: Bool,
                            removable: Bool, physical: Bool = true, whole: Bool = true,
-                           systemImage: Bool = false) -> Data {
+                           ejectable: Bool = true, systemImage: Bool = false) -> Data {
         """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -16,7 +16,7 @@ final class SafetyPolicyTests: XCTestCase {
           <key>DeviceBlockSize</key><integer>512</integer>
           <key>Internal</key><\(isInternal)/>
           <key>RemovableMedia</key><\(removable)/>
-          <key>Ejectable</key><true/>
+          <key>Ejectable</key><\(ejectable)/>
           <key>SystemImage</key><\(systemImage)/>
           <key>WholeDisk</key><\(whole)/>
           <key>VirtualOrPhysical</key><string>\(physical ? "Physical" : "Virtual")</string>
@@ -43,8 +43,14 @@ final class SafetyPolicyTests: XCTestCase {
         XCTAssertEqual(SafetyPolicy.default.rejection(for: d), .internalDisk)
     }
 
-    func testInternalWinsEvenIfRemovableFlagIsSet() throws {
-        let d = try disk(infoPlist(id: "disk0", size: 16_000_000_000, bus: "USB", internal: true, removable: true))
+    /// Valori reali del lettore SD integrato di un MacBook: Internal=true ma removibile ed espellibile.
+    func testBuiltInSDReaderReportingInternalIsSelectable() throws {
+        let d = try disk(infoPlist(id: "disk4", size: 62_568_529_920, bus: "Secure Digital", internal: true, removable: true))
+        XCTAssertNil(SafetyPolicy.default.rejection(for: d))
+    }
+
+    func testInternalRemovableButNotEjectableIsRejected() throws {
+        let d = try disk(infoPlist(id: "disk0", size: 16_000_000_000, bus: "USB", internal: true, removable: true, ejectable: false))
         XCTAssertEqual(SafetyPolicy.default.rejection(for: d), .internalDisk)
     }
 
