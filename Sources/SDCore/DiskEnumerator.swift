@@ -18,36 +18,46 @@ public struct DiskEnumerator: Sendable {
     /// Elenca tutti i dischi interi del sistema (la selezione si fa con `SafetyPolicy`).
     public func allDisks() throws -> [DiskInfo] {
         let list = try Self.runDiskutil(["list", "-plist"])
-        let (ids, volumes) = try Self.parseList(list)
+        let (ids, volumes, partitions) = try Self.parseList(list)
         return try ids.compactMap { id in
             let info = try Self.runDiskutil(["info", "-plist", id])
-            return try Self.parseInfo(info, volumeNames: volumes[id] ?? [])
+            return try Self.parseInfo(info, volumeNames: volumes[id] ?? [], partitions: partitions[id] ?? [])
         }
     }
 
     // MARK: - Parsing (puro, testabile con plist di esempio)
 
-    /// Restituisce gli identificatori dei dischi interi e i nomi dei volumi di ciascuno.
-    static func parseList(_ data: Data) throws -> (ids: [String], volumes: [String: [String]]) {
+    /// Restituisce gli identificatori dei dischi interi, i nomi dei volumi e le partizioni di ciascuno.
+    static func parseList(_ data: Data) throws
+        -> (ids: [String], volumes: [String: [String]], partitions: [String: [PartitionInfo]]) {
         let root = try plist(data)
         guard let whole = root["WholeDisks"] as? [String] else {
             throw DiskEnumeratorError.malformedPlist("manca WholeDisks")
         }
         var volumes: [String: [String]] = [:]
+        var partitions: [String: [PartitionInfo]] = [:]
         for entry in root["AllDisksAndPartitions"] as? [[String: Any]] ?? [] {
             guard let id = entry["DeviceIdentifier"] as? String else { continue }
             var names: [String] = []
             if let v = entry["VolumeName"] as? String, !v.isEmpty { names.append(v) }
+            var parts: [PartitionInfo] = []
             for p in entry["Partitions"] as? [[String: Any]] ?? [] {
-                if let v = p["VolumeName"] as? String, !v.isEmpty { names.append(v) }
+                let name = (p["VolumeName"] as? String) ?? ""
+                if !name.isEmpty { names.append(name) }
+                if let pid = p["DeviceIdentifier"] as? String {
+                    parts.append(PartitionInfo(identifier: pid, name: name,
+                                               content: (p["Content"] as? String) ?? "",
+                                               sizeBytes: (p["Size"] as? NSNumber)?.uint64Value ?? 0))
+                }
             }
             volumes[id] = names
+            partitions[id] = parts
         }
-        return (whole, volumes)
+        return (whole, volumes, partitions)
     }
 
     /// Converte l'output di `diskutil info -plist` in `DiskInfo`. Nil se non e' un disco intero.
-    static func parseInfo(_ data: Data, volumeNames: [String]) throws -> DiskInfo? {
+    static func parseInfo(_ data: Data, volumeNames: [String], partitions: [PartitionInfo] = []) throws -> DiskInfo? {
         let d = try plist(data)
         guard let id = d["DeviceIdentifier"] as? String else {
             throw DiskEnumeratorError.malformedPlist("manca DeviceIdentifier")
@@ -65,7 +75,8 @@ public struct DiskEnumerator: Sendable {
             isRemovableMedia: (d["RemovableMedia"] as? Bool) ?? false,
             isEjectable: (d["Ejectable"] as? Bool) ?? false,
             isSystemImage: (d["SystemImage"] as? Bool) ?? false,
-            volumeNames: volumeNames
+            volumeNames: volumeNames,
+            partitions: partitions
         )
     }
 

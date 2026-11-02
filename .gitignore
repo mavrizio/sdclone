@@ -7,3 +7,9 @@ DerivedData/
 *.img
 *.img.gz
 *.img.zst
+build/
+
+# Documenti interni (dati della flotta): restano solo in locale
+docs/golden-primo-avvio.md
+# Configurazione personale dell'editor
+*.code-workspace
